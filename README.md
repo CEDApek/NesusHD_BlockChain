@@ -1,4 +1,4 @@
-# Nexus Demo Stack
+# Nesus Demo Stack
 
 This repository contains a minimal demonstration stack that combines a Vue.js
 front-end, a Flask API, and a mocked Hyperledger Fabric integration. It is

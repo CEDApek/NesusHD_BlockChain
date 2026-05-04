@@ -1,154 +1,176 @@
 ## 3. System Architecture and Technical Approach
 
-### 3.1 Repository-Based Architecture (Refined)
+### 3.1 Repository-Based Layered Architecture as the Development Baseline
 
-The implemented project follows a **layered prototype architecture** with clear runtime separation among the web presentation tier (`frontend/`), API/service tier (`backend/`), and ledger domain simulation tier (`hyperledger/`). The architecture is intentionally lightweight to satisfy course-level deliverability while preserving realistic software boundaries for future extension.
+The project architecture will be organized as a three-layer baseline derived from the current repository structure (`frontend/`, `backend/`, `hyperledger/`). During the development phase, this layered structure will be treated as the primary coordination model for implementation, integration testing, and final delivery.
 
-At runtime, a browser user interacts with a Vue 3 single-page application. The SPA sends HTTP requests (Axios) to Flask endpoints under `/api/*`. Flask handlers perform input parsing, validation, authorization checks (role/identity checks using demo user store), and business orchestration. Ledger-relevant operations are delegated to a long-lived in-memory `ResourceSharingSystem` instance instantiated in `backend/app.py`. File binaries are persisted in `backend/uploads/`, while metadata and reward/block states are maintained in memory by the ledger layer.
+The team plans to maintain the following planned module boundaries:
+- **Presentation Layer (`frontend/`)** will be responsible for user interaction, UI state transitions, and standardized API invocation.
+- **Service Layer (`backend/`)** will be treated as the backend entry and orchestration boundary for request parsing, validation, business-rule enforcement, and response composition.
+- **Ledger Domain Layer (`hyperledger/`)** will continue to encapsulate simulation state and transaction/block logic through `ResourceSharingSystem` and related domain models.
+- **Local Storage Boundary (`backend/uploads`)** will be retained for file persistence in the course prototype and will be governed by explicit validation and rollback rules.
 
-This architecture yields a deterministic demo stack that supports:
-- Reproducible functional flows without external infrastructure dependencies.
-- Fast feedback cycles for testing and classroom demonstration.
-- A migration path where ledger internals can later be replaced by real Fabric SDK calls while preserving backend route contracts.
+During integration testing, each cross-layer interaction (Frontend → Backend → Ledger/Storage) will be verified for correctness, consistency, and traceability. The expected integration output is a stable end-to-end workflow that supports login, upload, download, mining, and block inspection with reproducible behavior.
 
-#### Engineering responsibilities by tier
+#### Planning-Oriented Architecture Deliverables
+- Layer boundary definition notes.
+- Cross-layer interface mapping (UI actions ↔ API endpoints ↔ ledger operations).
+- Integration readiness checklist for final delivery.
 
-1. **Presentation tier (`frontend/`)**
-   - View composition, input collection, and user interaction orchestration.
-   - Frontend pre-checks (e.g., upload form constraints) to improve UX.
-   - API invocation and response-driven rendering.
-
-2. **API/service tier (`backend/`)**
-   - Canonical business rule enforcement (source of truth).
-   - Input normalization and defensive validation.
-   - Security boundary for role-based view differences.
-   - Translation between HTTP payloads and ledger domain operations.
-
-3. **Ledger domain tier (`hyperledger/`)**
-   - Domain state management: users, resources, transaction queue, blocks, balances.
-   - Mining and wealth accrual semantics.
-   - Search/statistical access patterns for files and block history.
-
-4. **Storage concerns**
-   - Binary persistence: local filesystem.
-   - Stateful simulation data: process memory.
+#### Diagram 1: Planned Overall System Architecture
+```mermaid
+graph TD
+  U[User Browser] --> V[Vue 3 SPA Frontend]
+  V -->|HTTP/JSON, Multipart| B[Flask API Backend]
+  B --> L[In-Memory Ledger Module]
+  B --> S[Local File Storage backend/uploads]
+  L --> C[Users/Transactions/Blocks State]
+  S --> D[Binary Files]
+```
 
 ---
 
-### 3.2 Technical Stack Actually Present (Implementation View)
+### 3.2 Technology Selection and Usage Plan
 
-#### Backend stack
-- **Python 3.x + Flask** for REST API endpoint exposure and request lifecycle handling.
-- **Flask-CORS** for cross-origin requests from Vite frontend during local development.
-- **Werkzeug secure utilities** (`secure_filename`) for upload filename sanitization.
-- Standard Python libraries (`hashlib`, `datetime`, `collections`, etc.) for hashing, timestamps, and transient state structures.
+The current stack will be preserved as the implementation baseline, and each technology will be used according to a planned engineering purpose.
 
-#### Frontend stack
-- **Vue 3** (Composition API) as reactive UI runtime.
-- **Vite** for local dev server, bundling, and hot-module reload.
-- **Axios** for API communication and asynchronous workflow control.
+#### Backend Technology Plan
+- **Python + Flask** will be used to organize REST endpoint behavior and to provide explicit request lifecycle control.
+- **Flask-CORS** will be maintained to support frontend-backend collaboration during iterative development.
+- **Werkzeug utilities** will be used for filename sanitization and safe handling of upload metadata.
+- **Python standard libraries** (`hashlib`, `datetime`, `collections`) will be used to implement deterministic hashing, timestamping, and temporary state control.
 
-#### Ledger/simulation stack
-- **Pure Python domain module** implementing chain-like mechanics in-memory.
-- Thread-safety primitives (lock usage in resource manager areas) to protect local mutations.
-- Dataclass usage (`SharedFile`) to define resource domain entities with serializable structure.
+#### Frontend Technology Plan
+- **Vue 3 (Composition API)** will be used to organize reactive states and modular component responsibilities.
+- **Vite** will be treated as the rapid development and packaging toolchain to support frequent integration cycles.
+- **Axios** will be standardized as the HTTP client for all backend interactions.
 
-#### Persistence characteristics
-- File bytes: persisted under `backend/uploads/`.
-- Ledger/account/block state: memory-resident inside backend process lifetime.
-- Consequence: restart resets ledger simulation state while stored binaries remain on disk unless cleaned.
+#### Ledger Simulation Technology Plan
+- The in-memory module in `hyperledger/ledger.py` will be retained for this project phase to reduce infrastructure complexity.
+- Domain entities such as `SharedFile` will be treated as structured state containers for deterministic testing.
+- Existing lock-based mutation control will be reviewed and refined where needed for consistency.
 
----
+#### Technology Planning Rationale
+This technology strategy is planned to balance three course requirements:
+1. **Deliverability**: the system can be developed and demonstrated within course timelines.
+2. **Verifiability**: behavior can be validated through deterministic tests and repeatable workflows.
+3. **Replaceability**: module boundaries remain clear for future migration (e.g., real Fabric client).
 
-### 3.3 Technical Approach for Course Completion (Execution-Oriented)
-
-The technical delivery strategy is **interface-preserving hardening**: retain the currently functional prototype behavior while improving reliability, testability, and demonstrability.
-
-#### Approach A: Contract stabilization
-- Treat `backend/app.py` API surface as system contract.
-- Build a strict endpoint matrix (method, path, params, success/failure schema, side effects).
-- Align frontend consumption and error rendering to this matrix.
-
-#### Approach B: Workflow-closure development
-Focus on one complete value chain rather than isolated screens:
-1. Identity establishment (`/api/register`, `/api/login`).
-2. Resource declaration/upload and deduplication.
-3. Resource discovery/detail/download.
-4. Reward settlement through mining.
-5. Block visibility inspection by role.
-
-#### Approach C: Rule centralization
-- Keep backend as authoritative checker for limits and policy (size limit, duplicate checks, download attempts, role visibility).
-- Frontend constraints are advisory; backend validation is mandatory.
-
-#### Approach D: Deterministic test support
-- Use seeded demo users and in-memory predictable states for reproducible test scenarios.
-- Design test scripts around endpoint chains and explicit post-conditions (wealth/pending/block count changes).
-
-#### Approach E: Replaceability by design
-- Encapsulate ledger operations behind service calls so future Fabric integration swaps the implementation, not the route contracts.
+The expected output is a technology usage guideline that aligns implementation decisions with the project schedule and testing plan.
 
 ---
 
-### 3.4 Backend Internal Architecture
+### 3.3 Technical Approach Plan for Completion
 
-The backend in `backend/app.py` is not split into package submodules yet, but internally it already follows separable concerns. For engineering planning, we model it as four logical layers:
+The team will execute Section 3 through five planned engineering actions.
 
-#### 3.4.1 Routing Layer
-Responsibilities:
-- HTTP method + URL dispatch.
-- Query/body extraction from Flask `request`.
-- Mapping endpoint intent to service operations.
+#### 3.3.1 Contract Stabilization
+During the development phase, the backend API surface will be treated as the formal contract boundary. The team will review endpoint semantics, input requirements, response fields, and side effects.
 
-Representative endpoint groups:
-- **Auth/account**: login, register.
-- **Ledger view/update**: balance query, reward mining, block listing.
-- **Resource lifecycle**: list files, categories, detail, download, upload.
+- Planned actions:
+  - Build endpoint-by-endpoint matrix (method, path, parameters, success/failure format).
+  - Align frontend consumption logic with documented response structure.
+  - Track contract deltas in PR reviews.
+- Expected output:
+  - **API matrix** and change log.
 
-Each route should remain thin: parse → validate → call domain service → shape response.
+#### 3.3.2 Workflow Closure
+The project will be organized around complete user workflows rather than isolated module tasks.
 
-#### 3.4.2 Service Logic Layer (Logical)
-Responsibilities:
-- Encodes business workflows crossing multiple checks and mutations.
-- Coordinates `ResourceSharingSystem` calls with filesystem operations.
-- Applies role policy (admin vs member view scope).
+- Planned actions:
+  - Treat login → upload → download → mining → block inspection as the baseline chain.
+  - Verify that each workflow has deterministic preconditions and postconditions.
+  - Bind workflow checks to weekly integration tasks.
+- Expected output:
+  - **Workflow checklist** with pass/fail evidence.
 
-Examples:
-- Upload workflow service: category normalization + size enforcement + dedupe checks + binary write + ledger registration.
-- Mining service: settle pending transactions and return normalized mined block payload.
-- Block query service: apply role-based filters and search normalization.
+#### 3.3.3 Rule Centralization
+Business constraints will be centralized in backend logic to ensure source-of-truth behavior.
 
-#### 3.4.3 Validation Layer (Logical)
-Responsibilities:
-- Input type/required-field checks.
-- Domain constraints:
-  - upload bytes in `(0, 100MB]`
-  - valid/normalized category
-  - duplicate name/content protection
-  - download-attempt limits per `(downloader, owner, file_id)` tuple
-- Error response shaping (HTTP code + message).
+- Planned actions:
+  - Confirm that frontend checks are advisory and backend validation remains authoritative.
+  - Consolidate constraints for size limits, duplicate detection, role visibility, and download limits.
+  - Ensure consistent error signaling for rule violations.
+- Expected output:
+  - **Validation checklist** and rule ownership notes.
 
-Validation helpers in code include parsing/normalization functions (size parsing, category normalization, uploader checks, etc.), and should be incrementally extracted into dedicated utilities for maintainability.
+#### 3.3.4 Deterministic Testing
+Testing will be planned around deterministic scenarios to improve reproducibility.
 
-#### 3.4.4 File Handling Logic
-Responsibilities:
-- Accept multipart or JSON metadata patterns where applicable.
-- Sanitize filename to avoid unsafe path composition.
-- Persist binaries under upload root directory.
-- Hash content (`sha256`) for integrity and duplicate checking.
-- Serve download streams with MIME inference.
+- Planned actions:
+  - Use seeded accounts and known baseline state.
+  - Define endpoint-chain tests with explicit expected mutations.
+  - Capture reproducible logs during integration testing.
+- Expected output:
+  - **Test scripts** and deterministic scenario records.
 
-Engineering note: filesystem write and ledger record insertion should be treated as a pseudo-transaction; failure in one phase should trigger compensating action (e.g., remove written file when ledger registration fails).
+#### 3.3.5 Replaceability by Design
+The architecture will be refined so the current in-memory simulation can be replaced with minimal API disruption.
 
-#### 3.4.5 Backend request lifecycle
-1. Flask route receives request.
-2. Request parser extracts JSON/form/query params.
-3. Validation executes mandatory checks and normalization.
-4. Service logic coordinates ledger + storage mutations/reads.
-5. Response serializer returns JSON or file stream.
-6. Error path maps exception/validation issues to stable API message.
+- Planned actions:
+  - Identify where backend routes call `ResourceSharingSystem`.
+  - Define adapter boundaries for future ledger replacement.
+  - Track assumptions tied to in-memory state.
+- Expected output:
+  - **Replacement boundary notes** for future Fabric migration.
 
-#### Diagram 3: Backend Internal Flow
+---
+
+### 3.4 Backend Internal Architecture Refinement Plan
+
+During the development phase, the backend in `backend/app.py` will be reviewed and refined as four logical layers plus lifecycle verification.
+
+#### 3.4.1 Routing Layer Review
+Flask routes will be treated as backend entry points. The team will review path definitions, method usage, parameter extraction, and response shaping.
+
+- Planned focus:
+  - Ensure route intent is unambiguous.
+  - Ensure each route delegates nontrivial logic to helper/service routines.
+  - Ensure consistent status code behavior.
+- Expected output:
+  - **Backend route checklist**.
+
+#### 3.4.2 Service Logic Separation
+The team plans to separate orchestration logic from raw route code progressively.
+
+- Planned focus:
+  - Group workflow-level behavior (upload pipeline, mining pipeline, block filtering).
+  - Reduce duplicated mutation logic.
+  - Improve traceability between API actions and state updates.
+- Expected output:
+  - Service responsibility map and refactoring notes.
+
+#### 3.4.3 Validation Logic Extraction
+Validation rules will be organized into explicit, reviewable rule sets.
+
+- Planned focus:
+  - Required fields and type checks.
+  - Size/category/hash/name/attempt-limit constraints.
+  - Role-based visibility checks for sensitive views.
+- Expected output:
+  - **Validation rule table** and **error response schema**.
+
+#### 3.4.4 File Handling Safety Plan
+The file upload module will use `backend/uploads` as the local storage directory for the course prototype.
+
+- Planned focus:
+  - Strengthen filename sanitization and path-safety checks.
+  - Enforce upload size boundary and integrity hash verification.
+  - Define rollback behavior for partial failures.
+- Expected output:
+  - File handling safety checklist and exception-handling notes.
+
+#### 3.4.5 Request Lifecycle Verification
+During integration testing, route parsing, validation, service invocation, ledger mutation, and response construction will be verified as a complete lifecycle.
+
+- Planned focus:
+  - Success and error path consistency.
+  - Log traceability for debugging and acceptance review.
+  - Reproducible lifecycle checks per critical endpoint.
+- Expected output:
+  - **Backend integration checklist**.
+
+#### Diagram 3: Planned Backend Internal Flow Verification
 ```mermaid
 graph TD
   A[HTTP Request] --> B[Flask Route Handler]
@@ -165,48 +187,53 @@ graph TD
 
 ---
 
-### 3.5 Frontend Architecture
+### 3.5 Frontend Architecture Organization Plan
 
-The frontend is centered on `App.vue` as shell/controller with composable child components that partition functional concerns.
+The frontend architecture will be organized around `App.vue` as a controller shell and component modules as functional UI units.
 
-#### 3.5.1 Component structure
+#### 3.5.1 `App.vue` as Controller Shell
+During the development phase, `App.vue` will be treated as the orchestration center for:
+- Session context.
+- Dashboard tab flow.
+- Shared loading/error state.
+- Cross-component event routing.
 
-**Application shell (`App.vue`)**
-- Maintains top-level session and dashboard context.
-- Controls tab navigation (`files`, `upload`, `blocks`).
-- Manages orchestration state (loading flags, mining overlay, selected file context, error banners).
+The team will verify that global state transitions remain predictable during integration testing.
 
-**Functional components**
-- `LoginForm.vue`: credentials input and authentication event emission.
-- `FileList.vue`: catalogue display, filtering/search interactions, and file action dispatch.
-- `FileDetail.vue`: detailed metadata display and scoped download trigger.
-- `UploadForm.vue`: file selection, metadata input, frontend pre-validation, submission.
-- `MinedBlocks.vue`: mined block listing, role-aware filters, and export/search interactions.
+#### 3.5.2 Components as Functional UI Modules
+The following components will be treated as planned functional modules:
+- `LoginForm.vue`: identity input and login trigger.
+- `FileList.vue`: resource browsing and filtering interactions.
+- `FileDetail.vue`: resource detail and download trigger.
+- `UploadForm.vue`: upload data input and pre-validation UX.
+- `MinedBlocks.vue`: block view, filtering, and role-aware presentation.
 
-This is a **container-presentational hybrid**: App.vue behaves as container/controller; child components render and emit events.
+Each module will have a bounded responsibility to reduce coupling and simplify review.
 
-#### 3.5.2 API service interaction model
-Although an explicit dedicated service directory is not yet created, API calls are centralized in App-level async methods using Axios. A recommended refinement is a `src/services/api.js` abstraction, but the current implementation still follows a consistent call pattern:
-1. Set loading state.
-2. Call endpoint.
-3. Update reactive state on success.
-4. Capture and render error state on failure.
-5. Clear loading state in `finally`-style handling.
+#### 3.5.3 API Call Standardization Plan
+API calls will be standardized to a consistent request lifecycle pattern:
+1. set loading state,
+2. send request,
+3. map success payload,
+4. map error payload,
+5. finalize UI state.
 
-#### 3.5.3 State handling model
-- Vue `ref` / `computed` state manages user identity, wealth, file catalogue, block data, and UI flags.
-- Derived view state (e.g., masked identity display, role-based display controls) computed from primary state.
-- State transitions are event-driven via component emits and button actions.
+During integration testing, the team will verify that identical error conditions are rendered consistently across tabs.
 
-#### 3.5.4 Interaction lifecycle (UI ↔ API)
-1. User action in component (click submit, filter, mine).
-2. Component emits event or invokes handler in App shell.
-3. App handler calls backend API via Axios.
-4. Backend response mapped to reactive state.
-5. Child components re-render from updated props.
-6. Errors displayed contextually without full app reset.
+#### 3.5.4 Loading/Error State Handling Plan
+Loading indicators and error prompts will be organized as testable UI states rather than ad hoc rendering behavior.
 
-#### Diagram 2: Request Flow (Sequence)
+- Planned verification points:
+  - per-module loading visibility,
+  - recoverability after API failures,
+  - consistent reset behavior after success.
+
+#### Frontend Planning Deliverables
+- **Component responsibility table**.
+- **UI interaction checklist**.
+- **Frontend-backend API alignment notes**.
+
+#### Diagram 2: Planned Request Interaction Sequence
 ```mermaid
 sequenceDiagram
   participant U as User
@@ -225,61 +252,50 @@ sequenceDiagram
 
 ---
 
-### 3.6 Ledger Module Architecture
+### 3.6 Ledger Module Development and Refinement Plan
 
-The ledger module in `hyperledger/ledger.py` simulates blockchain-adjacent behaviors with explicit domain models and in-memory collections.
+The ledger module will continue to use the in-memory architecture in `hyperledger/ledger.py` as the course baseline, while refinement activities will focus on consistency, verifiability, and replaceability.
 
-#### 3.6.1 Core domain models
+#### 3.6.1 Model and State Consistency Plan
+The team will maintain and verify core domain model boundaries:
+- User identity and address mapping (`users`-based lookup).
+- File metadata consistency through `SharedFile` entities.
+- Transaction consistency for sender/receiver/type/amount semantics.
+- Block consistency for index, previous hash linkage, and mined records.
 
-1. **User model (logical)**
-   - Identity mapping (`username`, blockchain-like address).
-   - Associated personal resource manager and wealth-related counters.
+During testing, the team will verify that lookup, ownership, and reward states remain consistent after each workflow action.
 
-2. **SharedFile (`@dataclass`)**
-   - Core metadata: `id`, `name`, `size_gb`, `uploader`, `description`.
-   - Distribution indicators: `seeds`, `peers`.
-   - Ownership and integrity: `owner_address`, `file_hash`, `content_hash`.
-   - Classification/storage metadata: `category`, `extension`, `storage_path`.
-   - Lifecycle flags: upload timestamp, active status.
+#### 3.6.2 In-Memory Storage Refinement Plan
+The current in-memory design will be treated as a controlled test substrate.
 
-3. **Transaction model**
-   - Transfer semantics: sender/receiver/amount.
-   - Transaction classification (`transaction_type`).
-   - Attached resource payload (`resource_data`).
-   - Deterministic hash from transaction content + timestamp.
+- Planned focus:
+  - state mutation traceability,
+  - deterministic initialization,
+  - reset behavior documentation.
 
-4. **Block model (logical structure)**
-   - Block index, previous hash, timestamp, miner information.
-   - Embedded transactions snapshot.
-   - Current block hash for chain continuity.
+#### 3.6.3 Transaction-to-Block Verification Plan
+The mining pipeline will be verified as a planned sequence:
+1. transaction creation,
+2. pending pool accumulation,
+3. mining trigger,
+4. block construction,
+5. block append,
+6. balance/resource state update.
 
-#### 3.6.2 In-memory storage design
-- `users` dictionary keyed by username for O(1) identity lookup.
-- Resource managers maintain file-id keyed maps and category/search-friendly iteration.
-- Pending transactions stored in mutable queue/list before mining commit.
-- Blockchain stored as append-only list in process memory.
+The expected output is a set of checks confirming that state transitions are coherent and reproducible.
 
-This design privileges speed and test transparency over durability.
+#### 3.6.4 Mining Workflow Testing Plan
+During integration testing, mining behavior will be validated using predefined scenarios and expected outcomes (block growth, pending reduction, wealth update).
 
-#### 3.6.3 Transaction-to-block pipeline
-1. User or system actions create transactions (upload declarations, download rewards, etc.).
-2. Transactions accumulate in pending pool.
-3. Mining operation selects pending transactions.
-4. New block assembled with previous hash pointer.
-5. Block hash computed and appended to chain.
-6. Account/resource states finalized according to transaction semantics.
-7. Pending pool cleared/advanced for next cycle.
+#### 3.6.5 Future Replacement Plan
+The current `ResourceSharingSystem` boundary will be documented so that a real Fabric client can replace internal storage/consensus behavior in future iterations without breaking frontend/backend contracts.
 
-#### 3.6.4 Blockchain simulation fidelity
-The module simulates key blockchain properties but is not consensus-distributed:
-- ✅ Immutable-like append sequence (within process lifetime).
-- ✅ Hash-linked block progression.
-- ✅ Explicit miner/reward accounting.
-- ❌ No distributed consensus protocol.
-- ❌ No peer network gossip/fork resolution.
-- ❌ No cryptographic identity authority (Fabric CA equivalent).
+#### Ledger Planning Deliverables
+- **Ledger model notes**.
+- **Mining workflow test cases**.
+- **State consistency checklist**.
 
-#### Diagram 4: Mining Workflow
+#### Diagram 4: Planned Mining Workflow Verification
 ```mermaid
 graph LR
   A[Pending Transaction Pool] --> B[Select Transactions]
@@ -292,89 +308,72 @@ graph LR
 
 ---
 
-### 3.7 Data Flow (Detailed)
+### 3.7 Planned Integration Data Flows
 
-This section defines end-to-end operational flows with explicit validation and state mutation points.
+The following workflows will be treated as integration baselines for development and verification.
 
-#### 3.7.1 Login flow
-1. User enters credentials in `LoginForm`.
-2. Frontend sends `POST /api/login`.
-3. Backend checks payload completeness and credential map.
-4. Backend ensures ledger user/address binding exists.
-5. Backend returns token-like demo value, role, and ledger identity.
-6. Frontend stores session context and switches to dashboard.
-7. Follow-up reads fetch categories/files/wealth context.
+#### 3.7.1 Login Workflow Plan
+- Involved modules:
+  - `LoginForm.vue` / `App.vue`, backend auth routes, `ResourceSharingSystem` identity binding.
+- Planned validation points:
+  - required credential fields,
+  - user-role mapping,
+  - response payload completeness.
+- Expected integration output:
+  - stable session initialization and role-aware dashboard entry.
 
-State effects:
-- Frontend: `user`, role flags, visibility controls activated.
-- Backend/ledger: may lazily initialize account in ledger structures.
+#### 3.7.2 Upload Workflow Plan
+- Involved modules:
+  - `UploadForm.vue`, backend upload route, validation helpers, file storage (`backend/uploads`), ledger resource registration.
+- Planned validation points:
+  - size boundaries,
+  - filename sanitization,
+  - category normalization,
+  - duplicate name/hash protection,
+  - partial-failure rollback.
+- Expected integration output:
+  - uploaded file is persisted, indexed, and visible via list/detail APIs.
 
-#### 3.7.2 Upload flow
-1. User chooses file and metadata in `UploadForm`.
-2. Frontend performs pre-checks (size, required fields) and submits multipart request.
-3. Backend route parses file stream and metadata.
-4. Validation layer enforces:
-   - size > 0 and ≤100MB
-   - sanitized filename
-   - category normalization
-   - duplicate-name and duplicate-content checks against existing resources
-5. File handling layer writes binary to `backend/uploads`.
-6. Ledger service registers new resource entry and queues related transaction(s).
-7. Backend returns success payload with resource metadata.
-8. Frontend refreshes catalogue/detail view and user feedback.
+#### 3.7.3 Download Workflow Plan
+- Involved modules:
+  - `FileList.vue` / `FileDetail.vue`, backend download route, attempt-counter logic, ledger reward-queue update.
+- Planned validation points:
+  - ownership and access checks,
+  - per-user attempt limit,
+  - response stream validity.
+- Expected integration output:
+  - valid downloads succeed within policy; limit violations return standardized errors.
 
-State effects:
-- Filesystem: new upload binary persisted.
-- Ledger: new file metadata + pending transactional impact.
-- Frontend: file list/state increments.
+#### 3.7.4 Mining Workflow Plan
+- Involved modules:
+  - mining action in `App.vue`, backend reward route, ledger pending-transaction and block-generation logic, block-view refresh.
+- Planned validation points:
+  - pending transaction consumption,
+  - mined block record consistency,
+  - wealth and pending counter synchronization.
+- Expected integration output:
+  - one complete mining cycle with verifiable block/state changes.
 
-#### 3.7.3 Download flow
-1. User clicks download from list or detail view.
-2. Frontend requests `/api/files/<owner>/<id>/download` with username context.
-3. Backend validates access and per-user attempt limit.
-4. If allowed, backend streams file bytes/placeholder.
-5. Backend records download attempt count.
-6. Ledger queues owner bonus-related transaction for next mining cycle.
-7. Frontend handles binary response and triggers browser save.
-
-State effects:
-- Backend in-memory attempt counter increments.
-- Ledger pending transactions increase.
-- Owner wealth unaffected immediately until mining.
-
-#### 3.7.4 Mining flow
-1. User triggers mine action from dashboard.
-2. Frontend may display simulated delay overlay for UX consistency.
-3. Backend processes mining request and delegates to ledger.
-4. Ledger consumes pending transactions and creates block.
-5. Ledger updates miner reward and affected account wealth.
-6. Backend normalizes block payload for UI.
-7. Frontend refreshes wealth summary and block list.
-
-State effects:
-- Blockchain length increments.
-- Pending transaction count decreases/reset.
-- Wealth values change and become observable in UI.
+During final delivery rehearsal, all four workflows will be executed as a chained acceptance scenario.
 
 ---
 
-### 3.8 API Design Strategy
+### 3.8 API Contract Planning Strategy
 
-The API design follows pragmatic REST-style conventions tailored to a prototype but intended for later hardening.
+The API strategy will be treated as a contract management plan rather than only a coding convention.
 
-#### 3.8.1 Resource-oriented endpoint patterns
-- Authentication resources: `/api/login`, `/api/register`.
-- File resources: `/api/files`, `/api/files/categories`, `/api/files/<owner>/<file_id>`, `/api/files/<owner>/<file_id>/download`.
-- Ledger resources: `/api/ledger/balance`, `/api/ledger/reward`, `/api/blocks`.
+#### 3.8.1 Request/Response Standardization Plan
+The team will standardize payload structures for success and failure responses and will document required/optional fields per endpoint.
 
-#### 3.8.2 Request/response patterns
-- JSON payloads for auth, metadata updates, and ledger operations.
-- Multipart form for binary upload + metadata.
-- Structured JSON responses with explicit key naming suitable for frontend rendering.
-- Stream/binary response for downloads.
+- Planned outputs:
+  - endpoint contract sheet,
+  - request examples,
+  - response examples.
 
-#### 3.8.3 Error handling format strategy
-Recommended consistent schema:
+#### 3.8.2 Error Code Consistency Plan
+Error handling will be refined toward consistent machine-readable codes in addition to human-readable messages.
+
+Recommended schema for planned adoption:
 ```json
 {
   "message": "Human-readable error summary",
@@ -383,75 +382,59 @@ Recommended consistent schema:
 }
 ```
 
-Current implementation already returns message-centric errors; course refinement should standardize machine-readable `code` fields for robust frontend branching and automated tests.
+During integration testing, the team will verify that equivalent validation failures return equivalent error codes and status classes.
 
-#### 3.8.4 REST and semantics
-- Use `GET` for retrieval-only operations.
-- Use `POST` for state-changing operations (register, login, upload, mine).
-- Preserve idempotency expectations where possible (e.g., repeated queries should not mutate state).
-- Use explicit query parameters for filtering in block search APIs.
+#### 3.8.3 Endpoint Documentation Plan
+All core endpoints (`/api/login`, `/api/register`, `/api/files*`, `/api/ledger/*`, `/api/blocks`) will be documented with method, parameter source, validation rules, and side effects.
 
----
+#### 3.8.4 Frontend Consumption Consistency Plan
+Frontend API consumption will be aligned to the same contract definitions so that UI logic does not depend on undocumented response variations.
 
-### 3.9 System Constraints & Design Decisions
-
-#### 3.9.1 Why mock ledger instead of real blockchain
-**Decision**: use in-memory Python simulation rather than Fabric deployment.
-
-**Reasons**:
-- Reduces environment complexity for classroom teams.
-- Avoids operational burden of peers/orderers/CA setup.
-- Enables fast debugging and deterministic demonstrations.
-
-**Trade-off**:
-- Lower realism in distributed trust and persistence behavior.
-- No real consensus/security guarantees.
-
-#### 3.9.2 Why local file storage
-**Decision**: persist uploads to local directory under backend project.
-
-**Reasons**:
-- Simple implementation and direct control for prototype stage.
-- Easy reproducibility without cloud credentials.
-- Allows immediate download demonstration for submitted resources.
-
-**Trade-off**:
-- Not horizontally scalable.
-- Requires filesystem hygiene and capacity controls.
-- Lacks redundancy and object-storage lifecycle policies.
-
-#### 3.9.3 Stateful process-memory constraints
-**Decision**: keep users/files/transactions/blocks in backend memory.
-
-**Benefits**:
-- Very low-latency reads/writes.
-- Predictable setup for lab testing.
-
-**Costs**:
-- Process restart resets simulation ledger state.
-- No multi-instance consistency.
-
-#### 3.9.4 Security posture constraints
-- Demo token strategy is intentionally non-production.
-- Role checks exist but should be hardened with signed tokens and middleware.
-- Upload security relies on size and filename checks; deep content scanning is absent.
-
-#### 3.9.5 Design implication for future evolution
-The chosen prototype decisions are acceptable for course objectives and support incremental migration path:
-1. Introduce persistent DB for metadata.
-2. Replace in-memory ledger adapter with Fabric client.
-3. Move file storage to object service.
-4. Add auth middleware and audited access control.
+The expected output is a stable API contract package suitable for final delivery and TA verification.
 
 ---
 
-### Diagram 1: Overall System Architecture
-```mermaid
-graph TD
-  U[User Browser] --> V[Vue 3 SPA Frontend]
-  V -->|HTTP/JSON, Multipart| B[Flask API Backend]
-  B --> L[In-Memory Ledger Module]
-  B --> S[Local File Storage backend/uploads]
-  L --> C[Users/Transactions/Blocks State]
-  S --> D[Binary Files]
-```
+### 3.9 Constraint Management and Future Evolution Plan
+
+The current constraints will be treated as planned engineering boundaries for the course prototype, and each constraint will be documented with validation strategy and migration notes.
+
+#### 3.9.1 Mock Ledger Constraint Management
+- Planned decision context:
+  - in-memory simulation will remain for this course phase.
+- Planned documentation/testing:
+  - explicitly record non-distributed assumptions,
+  - verify block/reward behavior through deterministic cases,
+  - define replacement notes for real Fabric integration.
+
+#### 3.9.2 Local File Storage Constraint Management
+- Planned decision context:
+  - `backend/uploads` will remain the prototype storage target.
+- Planned documentation/testing:
+  - define sanitization and size rules,
+  - verify upload/download integrity paths,
+  - document cleanup and capacity considerations.
+
+#### 3.9.3 Memory-State Constraint Management
+- Planned decision context:
+  - process-memory state will be used for speed and simplicity.
+- Planned documentation/testing:
+  - document restart/reset behavior,
+  - verify deterministic scenario setup,
+  - include state-reset notes in test scripts.
+
+#### 3.9.4 Security Constraint Management
+- Planned decision context:
+  - demo-grade token and authorization structure will be retained for course scope.
+- Planned documentation/testing:
+  - classify this as non-production security,
+  - verify role-based visibility behavior,
+  - record future hardening path (signed token middleware, stronger policy checks).
+
+#### 3.9.5 Planned Evolution Notes
+For future iterations beyond course delivery, the architecture is planned to evolve through:
+1. persistent metadata storage,
+2. ledger adapter replacement with Fabric client,
+3. object-storage migration for binaries,
+4. stronger authentication and auditing infrastructure.
+
+The expected output is a constraint-and-evolution register attached to the final technical package.
